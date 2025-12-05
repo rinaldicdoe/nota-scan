@@ -828,6 +828,6 @@ st.markdown("<br>", unsafe_allow_html=True)
 st.markdown("---")
 st.markdown("""
     <div style='text-align: center; padding: 1rem; color: #94a3b8;'>
-        <p style='margin: 0; font-size: 0.85rem;'>Dibuat dengan Streamlit + OpenAI GPT-4o</p>
+        <p style='margin: 0; font-size: 0.85rem;'>Dibuat dengan ❤️ oleh Tim IT Ozza </p>
     </div>
 """, unsafe_allow_html=True)
