@@ -1,0 +1,15 @@
+# Core Dependencies
+streamlit
+pandas
+openai
+
+# Google Sheets Integration
+gspread
+oauth2client
+
+# PDF Processing
+pdf2image
+Pillow
+
+# Environment Variables (Optional)
+python-dotenv
