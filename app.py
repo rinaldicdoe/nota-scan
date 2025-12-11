@@ -100,7 +100,14 @@ def process_image_with_gpt4o(image_bytes, mime_type):
     base64_image = base64.b64encode(image_bytes).decode('utf-8')
     
     prompt_text = """
-    Analisa gambar nota/invoice ini dengan sangat teliti. Ekstrak SEMUA informasi yang ada.
+    Analisa gambar nota/invoice ini dengan SANGAT TELITI. Ekstrak SEMUA informasi yang ada.
+    
+    ⚠️ PERHATIAN KHUSUS UNTUK TULISAN TANGAN:
+    - Nota ini kemungkinan TULISAN TANGAN yang sulit dibaca
+    - Baca SETIAP karakter dengan EKSTRA HATI-HATI
+    - Perhatikan konteks untuk memvalidasi pembacaan
+    - Jika ada coretan atau angka yang ambigu, lihat pola keseluruhan
+    - JANGAN tebak - jika tidak yakin, beri confidence rendah (<70)
     
     Output WAJIB format JSON Object dengan struktur berikut:
     
@@ -145,7 +152,10 @@ def process_image_with_gpt4o(image_bytes, mime_type):
     
     A. METADATA (Informasi Nota):
     1. 'tanggal': Tanggal transaksi di nota (format: YYYY-MM-DD atau DD/MM/YYYY)
-       - Cari di header nota
+       - PENTING: Cari di POJOK KIRI ATAS atau header nota
+       - Format bisa: DD-MM-YYYY, DD/MM/YYYY, YYYY-MM-DD
+       - Contoh: "09-11-2025" atau "09/11/2025" → "2025-11-09"
+       - JANGAN buat tanggal sendiri - HARUS dari nota
        - Jika tidak ada, isi dengan null
     
     2. 'nama_toko': Nama toko/merchant
@@ -299,7 +309,7 @@ def process_image_with_gpt4o(image_bytes, mime_type):
 
     try:
         response = client.chat.completions.create(
-            model="gpt-4o-mini",  # Optimized untuk cost-efficiency
+            model="gpt-4o",  # WAJIB untuk tulisan tangan - mini tidak cukup akurat
             messages=[
                 {
                     "role": "system",
