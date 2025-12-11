@@ -89,8 +89,8 @@ def connect_to_gsheet():
         st.error(f"Gagal konek ke Google Sheet: {e}")
         return None
 
-def process_image_with_gpt4o(image_bytes, mime_type):
-    """Mengirim gambar ke OpenAI GPT-4o untuk diekstrak datanya"""
+def process_image_with_gpt4o(image_bytes, mime_type, model="gpt-4o"):
+    """Mengirim gambar ke OpenAI GPT-4o/mini untuk diekstrak datanya"""
     
     if not client:
         st.error("OpenAI client belum diinisialisasi. Periksa API key Anda.")
@@ -173,7 +173,7 @@ def process_image_with_gpt4o(image_bytes, mime_type):
        - Jika tidak ada, isi dengan null
     
     6. 'jenis_pembayaran': "Cash" atau "Transfer"
-       - Jika ada tulisan "Transfer", "QRIS", "Debit", "Credit" = "Transfer"
+       - Jika ada tulisan "Transfer", "QRIS", "Debit", "Credit", "Bank" = "Transfer"
        - Jika ada tulisan "Cash", "Tunai" = "Cash"
        - Jika tidak jelas, coba tebak dari konteks (ada nomor rekening = Transfer)
        - Default: "Cash"
@@ -309,7 +309,7 @@ def process_image_with_gpt4o(image_bytes, mime_type):
 
     try:
         response = client.chat.completions.create(
-            model="gpt-4o",  # WAJIB untuk tulisan tangan - mini tidak cukup akurat
+            model=model,  # Gunakan model yang dipilih user
             messages=[
                 {
                     "role": "system",
@@ -918,6 +918,26 @@ with st.sidebar:
     )
     
     st.markdown("---")
+    st.markdown("### 🤖 Pilih Model AI")
+    
+    model_choice = st.selectbox(
+        "Model OCR",
+        options=["GPT-4o (Recommended)", "GPT-4o-mini (Hemat Biaya)"],
+        index=0,
+        help="Pilih model AI untuk ekstraksi data"
+    )
+    
+    # Info model
+    if "GPT-4o" in model_choice and "mini" not in model_choice:
+        st.success("✅ **GPT-4o**: Akurasi tinggi (95%+), cocok untuk tulisan tangan")
+        st.caption("💰 Biaya: ~$0.01-0.02 per nota")
+        selected_model = "gpt-4o"
+    else:
+        st.info("💰 **GPT-4o-mini**: Hemat biaya, cocok untuk nota printed")
+        st.caption("⚠️ Akurasi tulisan tangan: 75-85%")
+        selected_model = "gpt-4o-mini"
+    
+    st.markdown("---")
     st.markdown("### 📝 Cara Pakai")
     st.markdown("""
     <div style='background: rgba(255,255,255,0.15); padding: 1rem; border-radius: 8px; margin-bottom: 1rem;'>
@@ -1013,7 +1033,7 @@ if uploaded_files:
             
             if scan_button and image_bytes:
                 with st.spinner("🔄 Sedang menganalisa nota dengan AI... Mohon tunggu..."):
-                    json_data = process_image_with_gpt4o(image_bytes, mime_type)
+                    json_data = process_image_with_gpt4o(image_bytes, mime_type, selected_model)
                     
                     if json_data and 'items' in json_data:
                         items = json_data['items']
@@ -1136,7 +1156,7 @@ if uploaded_files:
                     
                     if img_bytes:
                         # Process with AI
-                        json_data = process_image_with_gpt4o(img_bytes, img_mime)
+                        json_data = process_image_with_gpt4o(img_bytes, img_mime, selected_model)
                         
                         if json_data and 'items' in json_data:
                             items = json_data['items']
