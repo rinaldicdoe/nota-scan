@@ -172,6 +172,9 @@ def process_image_with_gpt4o(image_bytes, mime_type):
     Untuk setiap item barang:
     
     1. 'nama_barang': Nama produk/item (string)
+       - Baca SETIAP huruf dengan teliti
+       - Perhatikan spasi dan kapitalisasi
+       - Jangan singkat atau ubah nama
     
     2. 'qty': Jumlah/kuantitas barang (float)
        - Integer (1, 2, 3, dst) atau desimal (0.5, 1.5, dst)
@@ -202,6 +205,29 @@ def process_image_with_gpt4o(image_bytes, mime_type):
          * Angka yang ambigu atau terpotong
          * Harus melakukan asumsi/tebakan
          * Format tidak standar
+    
+    TIPS OCR - PENTING UNTUK AKURASI:
+    
+    1. ANGKA yang sering tertukar:
+       - "0" (nol) vs "O" (huruf O) → Lihat konteks (di angka = 0, di kata = O)
+       - "1" (satu) vs "l" (huruf L kecil) vs "I" (huruf i besar) → Lihat konteks
+       - "5" (lima) vs "S" (huruf S) → Di angka = 5, di kata = S
+       - "8" (delapan) vs "B" (huruf B) → Di angka = 8, di kata = B
+       - "6" (enam) vs "G" (huruf G) → Di angka = 6, di kata = G
+    
+    2. NAMA BARANG - Baca dengan teliti:
+       - "Beras Premium" BUKAN "Beras Premum" atau "Beras Premlum"
+       - "Minyak Goreng" BUKAN "Mlnyak Goreng" atau "Minyak Goreng"
+       - Perhatikan ejaan yang benar
+    
+    3. QUANTITY - Validasi dengan total:
+       - Jika qty=5, harga_satuan=10000, maka total_harga HARUS 50000
+       - Jika tidak match, kemungkinan qty atau harga salah baca
+    
+    4. HARGA - Perhatikan pemisah ribuan:
+       - "15.000" atau "15,000" atau "15000" = 15000
+       - "20k" atau "20rb" = 20000
+       - Jangan lupa hapus pemisah ribuan
     
     ATURAN KHUSUS HARGA:
     - Jika harga tertulis "20", "25", "30" dll (angka kecil), cek apakah masuk akal
@@ -273,21 +299,34 @@ def process_image_with_gpt4o(image_bytes, mime_type):
 
     try:
         response = client.chat.completions.create(
-            model="gpt-4o-mini",  # Lebih murah & cepat, cocok untuk OCR
+            model="gpt-4o-mini",  # Optimized untuk cost-efficiency
             messages=[
+                {
+                    "role": "system",
+                    "content": """Anda adalah AI expert untuk OCR nota belanja Indonesia. 
+                    Tugas Anda: Ekstrak data dengan SANGAT TELITI dan AKURAT.
+                    
+                    PENTING:
+                    - Baca SETIAP karakter dengan hati-hati
+                    - Jangan skip atau asumsikan data
+                    - Jika ragu, beri confidence rendah
+                    - Perhatikan konteks untuk validasi (misal: harga harus masuk akal)
+                    """
+                },
                 {
                     "role": "user",
                     "content": [
                         {"type": "text", "text": prompt_text},
                         {"type": "image_url", "image_url": {
                             "url": f"data:{mime_type};base64,{base64_image}",
-                            "detail": "high"  # Gunakan detail tinggi untuk OCR lebih akurat
+                            "detail": "high"  # PENTING: Gunakan detail tinggi untuk akurasi maksimal
                         }}
                     ],
                 }
             ],
             response_format={"type": "json_object"},
-            temperature=0  # 0 untuk konsistensi maksimal
+            temperature=0,  # 0 untuk konsistensi maksimal
+            max_tokens=4096  # Cukup untuk nota panjang
         )
         
         result_content = response.choices[0].message.content
@@ -879,6 +918,17 @@ with st.sidebar:
     </div>
     """, unsafe_allow_html=True)
     
+    st.markdown("### 📸 Tips Foto Terbaik")
+    st.markdown("""
+    <div style='background: rgba(255,255,255,0.15); padding: 1rem; border-radius: 8px; margin-bottom: 1rem;'>
+        <p style='color: white; margin: 0.3rem 0; font-size: 0.85rem;'>✓ Pencahayaan terang & merata</p>
+        <p style='color: white; margin: 0.3rem 0; font-size: 0.85rem;'>✓ Foto dari atas (tegak lurus)</p>
+        <p style='color: white; margin: 0.3rem 0; font-size: 0.85rem;'>✓ Fokus jelas, tidak blur</p>
+        <p style='color: white; margin: 0.3rem 0; font-size: 0.85rem;'>✓ Seluruh nota terlihat</p>
+        <p style='color: white; margin: 0.3rem 0; font-size: 0.85rem;'>✗ Hindari bayangan & pantulan</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
     # Status
     st.markdown("---")
     st.markdown("### 🔌 Status")
@@ -1208,6 +1258,12 @@ if uploaded_files:
             column_config=column_config,
             hide_index=False,
         )
+        
+        # Auto-recalculate total_harga berdasarkan qty × harga_satuan
+        if 'qty' in edited_df.columns and 'harga_satuan' in edited_df.columns and 'total_harga' in edited_df.columns:
+            # Recalculate total_harga
+            edited_df['total_harga'] = (edited_df['qty'] * edited_df['harga_satuan']).astype(int)
+            st.info("💡 Total harga otomatis dihitung ulang: Qty × Harga Satuan")
         
         # Summary
         col_sum1, col_sum2, col_sum3 = st.columns(3)
