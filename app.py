@@ -100,34 +100,175 @@ def process_image_with_gpt4o(image_bytes, mime_type):
     base64_image = base64.b64encode(image_bytes).decode('utf-8')
     
     prompt_text = """
-    Analisa gambar nota/invoice ini dengan sangat teliti. Ekstrak SEMUA daftar barang yang dibeli.
+    Analisa gambar nota/invoice ini dengan sangat teliti. Ekstrak SEMUA informasi yang ada.
     
-    PENTING:
-    - Abaikan header toko, alamat, nomor telepon, tanggal transaksi
-    - Abaikan nama kasir, tanda tangan, footer
-    - Abaikan subtotal, pajak (tax/PPN), diskon, atau total pembayaran akhir
-    - Ambil HANYA item barang/produk yang dibeli dengan detail berikut:
+    Output WAJIB format JSON Object dengan struktur berikut:
     
-    Untuk setiap item, ambil:
-    1. 'nama_barang': Nama produk/item (string)
-    2. 'qty': Jumlah/kuantitas barang (integer). Jika tidak ada, asumsikan 1
-    3. 'harga_satuan': Harga per unit (integer, tanpa simbol mata uang)
-    4. 'total_harga': Total harga untuk item ini (qty × harga_satuan) (integer)
-    
-    Jika ada harga yang menggunakan format dengan titik/koma (misal: 15.000 atau 15,000), 
-    konversi menjadi integer murni (15000).
-    
-    Output WAJIB format JSON Object murni dengan key 'items' yang berisi array of objects.
-    
-    Contoh output yang benar:
     {
+      "metadata": {
+        "tanggal": "YYYY-MM-DD atau DD/MM/YYYY (tanggal transaksi di nota)",
+        "nama_toko": "Nama toko/merchant",
+        "nomor_rekening": "Nomor rekening toko (jika ada)",
+        "nama_bank": "Nama bank (jika ada, misal: BCA, Mandiri, BRI)",
+        "pemilik_rekening": "Nama pemilik rekening (jika ada)",
+        "jenis_pembayaran": "Cash atau Transfer",
+        "confidence": {
+          "tanggal": 0-100,
+          "nama_toko": 0-100,
+          "nomor_rekening": 0-100,
+          "nama_bank": 0-100,
+          "pemilik_rekening": 0-100,
+          "jenis_pembayaran": 0-100
+        }
+      },
       "items": [
-        {"nama_barang": "Kopi Susu", "qty": 2, "harga_satuan": 15000, "total_harga": 30000},
-        {"nama_barang": "Roti Bakar", "qty": 1, "harga_satuan": 12000, "total_harga": 12000}
+        {
+          "nama_barang": "Nama produk/item",
+          "qty": 1.0,
+          "unit": "kg/pcs/liter/dll",
+          "harga_satuan": 10000,
+          "total_harga": 10000,
+          "kategori_transaksi": "Bama atau Non Bama",
+          "confidence": {
+            "nama_barang": 0-100,
+            "qty": 0-100,
+            "unit": 0-100,
+            "harga_satuan": 0-100,
+            "total_harga": 0-100,
+            "kategori_transaksi": 0-100
+          }
+        }
       ]
     }
     
-    Jika tidak ada item yang bisa diekstrak, return: {"items": []}
+    INSTRUKSI DETAIL:
+    
+    A. METADATA (Informasi Nota):
+    1. 'tanggal': Tanggal transaksi di nota (format: YYYY-MM-DD atau DD/MM/YYYY)
+       - Cari di header nota
+       - Jika tidak ada, isi dengan null
+    
+    2. 'nama_toko': Nama toko/merchant
+       - Biasanya di header paling atas
+       - Jika tidak ada, isi dengan "Unknown"
+    
+    3. 'nomor_rekening': Nomor rekening toko (jika ada)
+       - Cari di footer atau header
+       - Jika tidak ada, isi dengan null
+    
+    4. 'nama_bank': Nama bank (BCA, Mandiri, BRI, BNI, dll)
+       - Jika tidak ada, isi dengan null
+    
+    5. 'pemilik_rekening': Nama pemilik rekening
+       - Jika tidak ada, isi dengan null
+    
+    6. 'jenis_pembayaran': "Cash" atau "Transfer"
+       - Jika ada tulisan "Transfer", "QRIS", "Debit", "Credit" = "Transfer"
+       - Jika ada tulisan "Cash", "Tunai" = "Cash"
+       - Jika tidak jelas, coba tebak dari konteks (ada nomor rekening = Transfer)
+       - Default: "Cash"
+    
+    B. ITEMS (Daftar Barang):
+    Untuk setiap item barang:
+    
+    1. 'nama_barang': Nama produk/item (string)
+    
+    2. 'qty': Jumlah/kuantitas barang (float)
+       - Integer (1, 2, 3, dst) atau desimal (0.5, 1.5, dst)
+       - Jika tertulis "1/2" = 0.5, "1/4" = 0.25
+       - Default: 1
+    
+    3. 'unit': Satuan barang (string)
+       - Contoh: "kg", "pcs", "liter", "gram", "box", "pack", "meter", dll
+       - Jika qty dalam bentuk pecahan (0.5), kemungkinan unit adalah "kg" atau "liter"
+       - Jika tidak ada, coba tebak dari nama barang atau isi "pcs"
+    
+    4. 'harga_satuan': Harga per unit (integer)
+       - PERHATIAN: "20" atau "20k" kemungkinan = 20.000
+       - Gunakan konteks total_harga untuk validasi
+    
+    5. 'total_harga': Total harga (qty × harga_satuan) (integer)
+       - PERHATIAN: "20" atau "20k" kemungkinan = 20.000
+    
+    6. 'kategori_transaksi': "Bama" atau "Non Bama"
+       - "Bama" = Bahan Makanan (beras, minyak, gula, sayur, buah, daging, ikan, telur, susu, dll)
+       - "Non Bama" = Bukan Bahan Makanan (sabun, shampo, tissue, alat tulis, elektronik, dll)
+       - Kategorikan berdasarkan nama barang
+    
+    7. 'confidence': Tingkat kepercayaan untuk setiap field (0-100)
+       - Berikan confidence rendah (<70) jika:
+         * Teks blur atau tidak jelas
+         * Tulisan tangan yang sulit dibaca
+         * Angka yang ambigu atau terpotong
+         * Harus melakukan asumsi/tebakan
+         * Format tidak standar
+    
+    ATURAN KHUSUS HARGA:
+    - Jika harga tertulis "20", "25", "30" dll (angka kecil), cek apakah masuk akal
+    - Jika total_harga jauh lebih besar, kemungkinan harga dalam ribuan (20 = 20.000)
+    - Jika ada notasi "k" atau "rb", kalikan dengan 1000 (20k = 20000)
+    - Pastikan qty × harga_satuan = total_harga
+    - Format dengan titik/koma (15.000 atau 15,000) → 15000
+    
+    YANG DIABAIKAN:
+    - Subtotal, pajak (tax/PPN), diskon, total pembayaran akhir
+    - Informasi kasir, tanda tangan
+    
+    Contoh output:
+    {
+      "metadata": {
+        "tanggal": "2024-01-15",
+        "nama_toko": "Toko Sumber Rezeki",
+        "nomor_rekening": "1234567890",
+        "nama_bank": "BCA",
+        "pemilik_rekening": "Budi Santoso",
+        "jenis_pembayaran": "Transfer",
+        "confidence": {
+          "tanggal": 95,
+          "nama_toko": 100,
+          "nomor_rekening": 90,
+          "nama_bank": 95,
+          "pemilik_rekening": 85,
+          "jenis_pembayaran": 80
+        }
+      },
+      "items": [
+        {
+          "nama_barang": "Beras Premium",
+          "qty": 5,
+          "unit": "kg",
+          "harga_satuan": 15000,
+          "total_harga": 75000,
+          "kategori_transaksi": "Bama",
+          "confidence": {
+            "nama_barang": 95,
+            "qty": 100,
+            "unit": 90,
+            "harga_satuan": 90,
+            "total_harga": 90,
+            "kategori_transaksi": 100
+          }
+        },
+        {
+          "nama_barang": "Minyak Goreng",
+          "qty": 2,
+          "unit": "liter",
+          "harga_satuan": 25000,
+          "total_harga": 50000,
+          "kategori_transaksi": "Bama",
+          "confidence": {
+            "nama_barang": 100,
+            "qty": 100,
+            "unit": 95,
+            "harga_satuan": 95,
+            "total_harga": 95,
+            "kategori_transaksi": 100
+          }
+        }
+      ]
+    }
+    
+    Jika tidak ada item: {"metadata": {...}, "items": []}
     """
 
     try:
@@ -181,6 +322,242 @@ def convert_pdf_to_image(pdf_bytes):
         st.error(f"Error konversi PDF: {e}")
         st.info("Pastikan Poppler sudah terinstall. Di macOS: brew install poppler")
         return None, None
+
+def validate_and_correct_items(items):
+    """
+    Validasi dan koreksi otomatis data hasil ekstraksi AI.
+    
+    Menangani:
+    1. Hyper-efficiency: Harga "20" yang sebenarnya "20.000" 
+    2. Kuantitas abstrak: "1/2" atau "0.5" untuk setengah
+    3. Balance check: qty × harga_satuan = total_harga
+    4. Confidence score: Mempertahankan skor kepercayaan dari AI
+    5. Field baru: unit, kategori_transaksi
+    
+    Returns:
+        list: Items yang sudah dikoreksi
+        list: Log koreksi yang dilakukan
+    """
+    corrected_items = []
+    correction_logs = []
+    
+    for idx, item in enumerate(items):
+        original_item = item.copy()
+        
+        # Pastikan semua field ada
+        nama = item.get('nama_barang', f'Item {idx+1}')
+        qty = item.get('qty', 1)
+        unit = item.get('unit', 'pcs')
+        harga_satuan = item.get('harga_satuan', 0)
+        total_harga = item.get('total_harga', 0)
+        kategori = item.get('kategori_transaksi', 'Non Bama')
+        
+        # Ambil confidence score jika ada, atau buat default
+        confidence = item.get('confidence', {
+            'nama_barang': 100,
+            'qty': 100,
+            'unit': 100,
+            'harga_satuan': 100,
+            'total_harga': 100,
+            'kategori_transaksi': 100
+        })
+        
+        # Pastikan confidence adalah dict
+        if not isinstance(confidence, dict):
+            confidence = {
+                'nama_barang': 100,
+                'qty': 100,
+                'unit': 100,
+                'harga_satuan': 100,
+                'total_harga': 100,
+                'kategori_transaksi': 100
+            }
+        
+        # Convert ke numeric jika masih string
+        try:
+            qty = float(qty) if not isinstance(qty, (int, float)) else qty
+            harga_satuan = int(harga_satuan) if not isinstance(harga_satuan, (int, float)) else harga_satuan
+            total_harga = int(total_harga) if not isinstance(total_harga, (int, float)) else total_harga
+        except:
+            correction_logs.append(f"⚠️ Item '{nama}': Gagal convert ke numeric, skip")
+            continue
+        
+        # KOREKSI 1: Deteksi hyper-efficiency pada harga_satuan
+        # Jika harga_satuan < 1000 tapi total_harga > 10000, kemungkinan harga dalam ribuan
+        if harga_satuan < 1000 and total_harga > 10000:
+            # Cek apakah total_harga adalah kelipatan ribuan dari harga_satuan
+            multiplier = total_harga / (harga_satuan * qty) if qty > 0 else 0
+            
+            # Jika multiplier mendekati 1000, berarti harga_satuan seharusnya dikali 1000
+            if 900 <= multiplier <= 1100:
+                old_harga = harga_satuan
+                harga_satuan = harga_satuan * 1000
+                correction_logs.append(
+                    f"✅ '{nama}': Harga satuan dikoreksi {old_harga} → {harga_satuan:,} (hyper-efficiency)"
+                )
+                # Turunkan confidence karena ada koreksi
+                confidence['harga_satuan'] = min(confidence.get('harga_satuan', 100), 80)
+        
+        # KOREKSI 2: Deteksi hyper-efficiency pada total_harga
+        # Jika total_harga < 1000 tapi harga_satuan > 10000
+        if total_harga < 1000 and harga_satuan > 10000:
+            multiplier = (harga_satuan * qty) / total_harga if total_harga > 0 else 0
+            
+            if 900 <= multiplier <= 1100:
+                old_total = total_harga
+                total_harga = total_harga * 1000
+                correction_logs.append(
+                    f"✅ '{nama}': Total harga dikoreksi {old_total} → {total_harga:,} (hyper-efficiency)"
+                )
+                # Turunkan confidence karena ada koreksi
+                confidence['total_harga'] = min(confidence.get('total_harga', 100), 80)
+        
+        # KOREKSI 3: Balance check - qty × harga_satuan = total_harga
+        expected_total = qty * harga_satuan
+        
+        # Toleransi 5% untuk pembulatan
+        tolerance = 0.05
+        diff_ratio = abs(expected_total - total_harga) / expected_total if expected_total > 0 else 0
+        
+        if diff_ratio > tolerance:
+            # Ada ketidaksesuaian, tentukan mana yang benar
+            
+            # Strategi: Percaya total_harga, koreksi harga_satuan
+            # Karena biasanya total_harga lebih akurat di nota
+            if total_harga > 0 and qty > 0:
+                old_harga_satuan = harga_satuan
+                harga_satuan = int(total_harga / qty)
+                
+                correction_logs.append(
+                    f"⚖️ '{nama}': Balance dikoreksi - Harga satuan {old_harga_satuan:,} → {harga_satuan:,} "
+                    f"(qty={qty}, total={total_harga:,})"
+                )
+                # Turunkan confidence karena ada koreksi
+                confidence['harga_satuan'] = min(confidence.get('harga_satuan', 100), 70)
+            # Jika total_harga = 0, hitung dari qty × harga_satuan
+            elif total_harga == 0 and harga_satuan > 0:
+                total_harga = int(qty * harga_satuan)
+                correction_logs.append(
+                    f"⚖️ '{nama}': Total harga dihitung = {total_harga:,} (dari qty × harga_satuan)"
+                )
+                # Turunkan confidence karena ada koreksi
+                confidence['total_harga'] = min(confidence.get('total_harga', 100), 70)
+        
+        # Simpan item yang sudah dikoreksi dengan confidence score
+        corrected_items.append({
+            'nama_barang': nama,
+            'qty': qty,
+            'unit': unit,
+            'harga_satuan': int(harga_satuan),
+            'total_harga': int(total_harga),
+            'kategori_transaksi': kategori,
+            'confidence': confidence
+        })
+    
+    return corrected_items, correction_logs
+
+def prepare_dataframe_with_confidence(items, metadata=None):
+    """
+    Menyiapkan DataFrame dengan kolom confidence indicator dan metadata.
+    
+    Menambahkan emoji/simbol untuk menandai field dengan confidence rendah:
+    - 🟢 (>= 80): Confidence tinggi
+    - 🟡 (70-79): Confidence sedang
+    - 🔴 (< 70): Confidence rendah - perlu review
+    
+    Args:
+        items: List of dict dengan confidence score
+        metadata: Dict dengan informasi nota (tanggal, nama_toko, dll)
+        
+    Returns:
+        DataFrame dengan kolom lengkap sesuai urutan yang dibutuhkan
+    """
+    df_data = []
+    
+    # Default metadata jika tidak ada
+    if metadata is None:
+        metadata = {
+            'tanggal': None,
+            'nama_toko': 'Unknown',
+            'nomor_rekening': None,
+            'nama_bank': None,
+            'pemilik_rekening': None,
+            'jenis_pembayaran': 'Cash'
+        }
+    
+    for item in items:
+        confidence = item.get('confidence', {})
+        
+        # Buat visual indicator untuk setiap field
+        nama_conf = confidence.get('nama_barang', 100)
+        qty_conf = confidence.get('qty', 100)
+        unit_conf = confidence.get('unit', 100)
+        harga_conf = confidence.get('harga_satuan', 100)
+        total_conf = confidence.get('total_harga', 100)
+        kategori_conf = confidence.get('kategori_transaksi', 100)
+        
+        # Fungsi untuk mendapatkan emoji berdasarkan confidence
+        def get_indicator(conf_score):
+            if conf_score >= 80:
+                return ""  # Tidak perlu indicator jika confidence tinggi
+            elif conf_score >= 70:
+                return "⚠️"  # Warning untuk confidence sedang
+            else:
+                return "❗"  # Alert untuk confidence rendah
+        
+        # Tambahkan indicator ke field yang perlu
+        nama_display = item.get('nama_barang', '')
+        indicator = get_indicator(nama_conf)
+        if indicator:
+            nama_display = f"{indicator} {nama_display}"
+        
+        unit_display = item.get('unit', 'pcs')
+        unit_indicator = get_indicator(unit_conf)
+        if unit_indicator:
+            unit_display = f"{unit_indicator} {unit_display}"
+        
+        kategori_display = item.get('kategori_transaksi', 'Non Bama')
+        kategori_indicator = get_indicator(kategori_conf)
+        if kategori_indicator:
+            kategori_display = f"{kategori_indicator} {kategori_display}"
+        
+        # Urutan kolom sesuai kebutuhan:
+        # Tanggal, Nama Toko, Nomor Rekening, Nama Bank, Pemilik Rekening, 
+        # Jenis Pembayaran, Kategori Transaksi, Quantity, Unit, Nama Barang, 
+        # Harga Satuan, Harga Total
+        row = {
+            'tanggal': metadata.get('tanggal'),
+            'nama_toko': metadata.get('nama_toko', 'Unknown'),
+            'nomor_rekening': metadata.get('nomor_rekening'),
+            'nama_bank': metadata.get('nama_bank'),
+            'pemilik_rekening': metadata.get('pemilik_rekening'),
+            'jenis_pembayaran': metadata.get('jenis_pembayaran', 'Cash'),
+            'kategori_transaksi': kategori_display,
+            'qty': item.get('qty', 1),
+            'unit': unit_display,
+            'nama_barang': nama_display,
+            'harga_satuan': item.get('harga_satuan', 0),
+            'total_harga': item.get('total_harga', 0),
+            # Simpan confidence untuk referensi (hidden)
+            '_conf_nama': nama_conf,
+            '_conf_qty': qty_conf,
+            '_conf_unit': unit_conf,
+            '_conf_harga': harga_conf,
+            '_conf_total': total_conf,
+            '_conf_kategori': kategori_conf,
+            # Simpan nilai asli tanpa indicator
+            '_nama_asli': item.get('nama_barang', ''),
+            '_unit_asli': item.get('unit', 'pcs'),
+            '_kategori_asli': item.get('kategori_transaksi', 'Non Bama')
+        }
+        
+        # Tambahkan source_file jika ada (untuk batch mode)
+        if 'source_file' in item:
+            row['source_file'] = item['source_file']
+        
+        df_data.append(row)
+    
+    return pd.DataFrame(df_data)
 
 def validate_dataframe(df):
     """Validasi data hasil ekstraksi"""
@@ -580,12 +957,16 @@ if uploaded_files:
                     
                     if json_data and 'items' in json_data:
                         items = json_data['items']
+                        metadata = json_data.get('metadata', {})
                         
                         if len(items) == 0:
                             st.warning("⚠️ Tidak ada item yang berhasil diekstrak. Coba foto/PDF yang lebih jelas.")
                         else:
-                            # Convert ke Pandas DataFrame
-                            df = pd.DataFrame(items)
+                            # Validasi dan koreksi otomatis
+                            corrected_items, correction_logs = validate_and_correct_items(items)
+                            
+                            # Convert ke Pandas DataFrame dengan confidence indicator dan metadata
+                            df = prepare_dataframe_with_confidence(corrected_items, metadata)
                             
                             # Validasi
                             is_valid, msg = validate_dataframe(df)
@@ -593,10 +974,47 @@ if uploaded_files:
                                 st.session_state.ocr_result_df = df
                                 st.session_state.scan_timestamp = datetime.now()
                                 st.success(f"✅ Berhasil! Ditemukan {len(df)} item.")
+                                
+                                # Tampilkan info metadata
+                                if metadata:
+                                    with st.expander("📋 Informasi Nota", expanded=False):
+                                        col_meta1, col_meta2 = st.columns(2)
+                                        with col_meta1:
+                                            st.write(f"**Tanggal:** {metadata.get('tanggal', '-')}")
+                                            st.write(f"**Nama Toko:** {metadata.get('nama_toko', '-')}")
+                                            st.write(f"**Jenis Pembayaran:** {metadata.get('jenis_pembayaran', '-')}")
+                                        with col_meta2:
+                                            st.write(f"**Nomor Rekening:** {metadata.get('nomor_rekening', '-')}")
+                                            st.write(f"**Nama Bank:** {metadata.get('nama_bank', '-')}")
+                                            st.write(f"**Pemilik Rekening:** {metadata.get('pemilik_rekening', '-')}")
+                                
+                                # Hitung berapa field yang perlu review (confidence < 80)
+                                low_conf_count = 0
+                                for item in corrected_items:
+                                    conf = item.get('confidence', {})
+                                    for field, score in conf.items():
+                                        if score < 80:
+                                            low_conf_count += 1
+                                
+                                # Tambahkan confidence dari metadata
+                                if metadata and 'confidence' in metadata:
+                                    for field, score in metadata['confidence'].items():
+                                        if score < 80:
+                                            low_conf_count += 1
+                                
+                                if low_conf_count > 0:
+                                    st.warning(f"⚠️ {low_conf_count} field memiliki confidence rendah. Ditandai dengan ⚠️ atau ❗. Silakan review!")
+                                
+                                # Tampilkan log koreksi jika ada
+                                if correction_logs:
+                                    with st.expander(f"🔧 Koreksi Otomatis ({len(correction_logs)} perubahan)", expanded=True):
+                                        for log in correction_logs:
+                                            st.write(log)
                             else:
                                 st.error(f"❌ Validasi gagal: {msg}")
                     else:
                         st.error("❌ Gagal mendapatkan data dari AI. Coba lagi.")
+
             
             # Info hasil scan terakhir
             if st.session_state.scan_timestamp:
@@ -639,6 +1057,8 @@ if uploaded_files:
         
         if batch_scan_button:
             all_items = []
+            all_correction_logs = []
+            all_metadata_list = []  # Simpan metadata per file
             progress_bar = st.progress(0)
             status_text = st.empty()
             
@@ -660,10 +1080,22 @@ if uploaded_files:
                         
                         if json_data and 'items' in json_data:
                             items = json_data['items']
-                            # Tambahkan info source file
-                            for item in items:
+                            metadata = json_data.get('metadata', {})
+                            
+                            # Validasi dan koreksi otomatis
+                            corrected_items, correction_logs = validate_and_correct_items(items)
+                            
+                            # Tambahkan metadata dan source file ke setiap item
+                            for item in corrected_items:
                                 item['source_file'] = file.name
-                            all_items.extend(items)
+                                # Simpan metadata dalam item untuk batch mode
+                                item['_metadata'] = metadata
+                            
+                            all_items.extend(corrected_items)
+                            
+                            # Simpan log koreksi dengan info file
+                            for log in correction_logs:
+                                all_correction_logs.append(f"[{file.name}] {log}")
                     
                 except Exception as e:
                     st.warning(f"⚠️ Error pada {file.name}: {e}")
@@ -672,11 +1104,17 @@ if uploaded_files:
             
             # Combine results
             if all_items:
-                df_combined = pd.DataFrame(all_items)
+                # Untuk batch mode, kita perlu handle metadata per-item
+                # Karena setiap file bisa punya metadata berbeda
+                df_rows = []
+                for item in all_items:
+                    item_metadata = item.pop('_metadata', {})
+                    # Prepare single item dengan metadata-nya
+                    df_single = prepare_dataframe_with_confidence([item], item_metadata)
+                    df_rows.append(df_single)
                 
-                # Reorder columns
-                cols_order = ['source_file', 'nama_barang', 'qty', 'harga_satuan', 'total_harga']
-                df_combined = df_combined[cols_order]
+                # Gabungkan semua dataframe
+                df_combined = pd.concat(df_rows, ignore_index=True)
                 
                 st.session_state.ocr_result_df = df_combined
                 st.session_state.scan_timestamp = datetime.now()
@@ -684,32 +1122,87 @@ if uploaded_files:
                 status_text.empty()
                 progress_bar.empty()
                 st.success(f"✅ Berhasil! Total {len(df_combined)} item dari {len(uploaded_files)} file.")
+                
+                # Hitung berapa field yang perlu review (confidence < 80)
+                low_conf_count = 0
+                for item in all_items:
+                    conf = item.get('confidence', {})
+                    for field, score in conf.items():
+                        if score < 80:
+                            low_conf_count += 1
+                
+                if low_conf_count > 0:
+                    st.warning(f"⚠️ {low_conf_count} field memiliki confidence rendah. Ditandai dengan ⚠️ atau ❗. Silakan review!")
+                
+                # Tampilkan log koreksi jika ada
+                if all_correction_logs:
+                    with st.expander(f"🔧 Koreksi Otomatis ({len(all_correction_logs)} perubahan)", expanded=False):
+                        for log in all_correction_logs:
+                            st.write(log)
+                
                 st.balloons()
             else:
                 status_text.empty()
                 progress_bar.empty()
                 st.error("❌ Tidak ada item yang berhasil diekstrak dari semua file.")
 
+
+
     # 3. Data Editor (Editable Table)
     if st.session_state.ocr_result_df is not None:
         st.markdown("---")
         st.subheader("📊 Hasil Ekstraksi Data")
-        st.info("💡 **Tips:** Klik cell untuk mengedit. Tekan Enter untuk konfirmasi. Klik '+' untuk tambah baris.")
         
-        # Widget Data Editor
+        # Legend untuk confidence indicator
+        col_legend1, col_legend2 = st.columns([3, 1])
+        with col_legend1:
+            st.info("💡 **Tips:** Klik cell untuk mengedit. Tekan Enter untuk konfirmasi. Klik '+' untuk tambah baris.")
+        with col_legend2:
+            st.markdown("""
+            **Legend:**  
+            ❗ = Perlu Review  
+            ⚠️ = Cek Ulang
+            """)
+        
+        # Prepare dataframe untuk display (tanpa kolom internal)
+        display_df = st.session_state.ocr_result_df.copy()
+        
+        # Hapus kolom internal yang dimulai dengan underscore
+        cols_to_hide = [col for col in display_df.columns if col.startswith('_')]
+        display_df = display_df.drop(columns=cols_to_hide, errors='ignore')
+        
+        # Widget Data Editor - Urutan kolom sesuai kebutuhan
         column_config = {
+            "tanggal": st.column_config.DateColumn("Tanggal", width="medium", format="YYYY-MM-DD"),
+            "nama_toko": st.column_config.TextColumn("Nama Toko", width="medium", required=True),
+            "nomor_rekening": st.column_config.TextColumn("Nomor Rekening", width="medium"),
+            "nama_bank": st.column_config.TextColumn("Nama Bank", width="small"),
+            "pemilik_rekening": st.column_config.TextColumn("Pemilik Rekening", width="medium"),
+            "jenis_pembayaran": st.column_config.SelectboxColumn(
+                "Jenis Pembayaran", 
+                width="small",
+                options=["Cash", "Transfer"],
+                required=True
+            ),
+            "kategori_transaksi": st.column_config.SelectboxColumn(
+                "Kategori", 
+                width="small",
+                options=["Bama", "Non Bama"],
+                required=True
+            ),
+            "qty": st.column_config.NumberColumn("Qty", width="small", min_value=0.01, required=True),
+            "unit": st.column_config.TextColumn("Unit", width="small", required=True),
             "nama_barang": st.column_config.TextColumn("Nama Barang", width="large", required=True),
-            "qty": st.column_config.NumberColumn("Qty", width="small", min_value=1, required=True),
             "harga_satuan": st.column_config.NumberColumn("Harga Satuan (Rp)", width="medium", format="%d", required=True),
             "total_harga": st.column_config.NumberColumn("Total Harga (Rp)", width="medium", format="%d", required=True),
         }
         
         # Tambahkan kolom source_file jika ada (untuk batch mode)
-        if 'source_file' in st.session_state.ocr_result_df.columns:
+        if 'source_file' in display_df.columns:
             column_config["source_file"] = st.column_config.TextColumn("File Asal", width="medium")
         
         edited_df = st.data_editor(
-            st.session_state.ocr_result_df,
+            display_df,
             num_rows="dynamic",  # User bisa tambah/hapus baris
             use_container_width=True,
             column_config=column_config,
@@ -745,12 +1238,18 @@ if uploaded_files:
                 sheet = connect_to_gsheet()
                 if sheet:
                     try:
-                        # Tambahkan timestamp untuk tracking
-                        edited_df_with_timestamp = edited_df.copy()
-                        edited_df_with_timestamp.insert(0, 'timestamp', datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+                        # Bersihkan emoji indicator dari field yang mungkin punya emoji
+                        save_df = edited_df.copy()
                         
-                        # Append ke sheet
-                        rows_to_append = edited_df_with_timestamp.values.tolist()
+                        # Hapus emoji ⚠️ dan ❗ dari semua field text
+                        text_columns = ['nama_barang', 'unit', 'kategori_transaksi']
+                        for col in text_columns:
+                            if col in save_df.columns:
+                                save_df[col] = save_df[col].astype(str).str.replace('⚠️ ', '', regex=False)
+                                save_df[col] = save_df[col].astype(str).str.replace('❗ ', '', regex=False)
+                        
+                        # Append ke sheet (tanpa timestamp karena sudah ada kolom tanggal)
+                        rows_to_append = save_df.values.tolist()
                         sheet.append_rows(rows_to_append)
                         
                         st.balloons()
@@ -811,9 +1310,25 @@ else:
         
         ### Format yang Bisa Diekstrak:
         - Nama barang/produk
-        - Jumlah/quantity (qty)
+        - Jumlah/quantity (qty) - termasuk pecahan seperti 0.5, 1/2
         - Harga satuan
         - Total harga per item
+        
+        ### 🎯 Confidence Indicator:
+        AI akan memberikan indikator visual untuk field yang ragu:
+        - **❗ (Merah)**: Confidence < 70% - **Perlu Review**
+        - **⚠️ (Kuning)**: Confidence 70-79% - **Cek Ulang**
+        - **Tanpa simbol**: Confidence ≥ 80% - Data akurat
+        
+        Indikator muncul di kolom yang AI ragu, misalnya:
+        - ❗ Beras Premium (nama tidak jelas)
+        - ⚠️ Minyak Goreng (tulisan blur)
+        
+        ### 🔧 Fitur Koreksi Otomatis:
+        Sistem akan otomatis mendeteksi dan memperbaiki:
+        - **Hyper-efficiency**: Harga "20" yang sebenarnya "20.000" atau "20k"
+        - **Kuantitas Abstrak**: "1/2" atau "0.5" untuk setengah kilo
+        - **Balance Check**: Memastikan qty × harga_satuan = total_harga
         
         ### Yang Diabaikan:
         - Header toko dan alamat

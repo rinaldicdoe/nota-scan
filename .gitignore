@@ -46,3 +46,6 @@ Thumbs.db
 
 # Streamlit
 .streamlit/secrets.toml.example
+
+# Documentation (Markdown files)
+*.md
