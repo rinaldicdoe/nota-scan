@@ -1063,20 +1063,30 @@ if uploaded_files:
                                 
                                 # Hitung berapa field yang perlu review (confidence < 80)
                                 low_conf_count = 0
-                                for item in corrected_items:
+                                low_conf_details = []
+                                for idx, item in enumerate(corrected_items):
                                     conf = item.get('confidence', {})
+                                    item_name = item.get('nama_barang', f'Item {idx+1}')
                                     for field, score in conf.items():
                                         if score < 80:
                                             low_conf_count += 1
+                                            low_conf_details.append(f"• {item_name} - {field}: {score}%")
                                 
                                 # Tambahkan confidence dari metadata
                                 if metadata and 'confidence' in metadata:
                                     for field, score in metadata['confidence'].items():
                                         if score < 80:
                                             low_conf_count += 1
+                                            low_conf_details.append(f"• Metadata - {field}: {score}%")
                                 
                                 if low_conf_count > 0:
                                     st.warning(f"⚠️ {low_conf_count} field memiliki confidence rendah. Ditandai dengan ⚠️ atau ❗. Silakan review!")
+                                    
+                                    # Debug: Tampilkan detail confidence
+                                    with st.expander("🔍 Detail Confidence (Debug)", expanded=False):
+                                        st.write("Field dengan confidence < 80%:")
+                                        for detail in low_conf_details:
+                                            st.write(detail)
                                 
                                 # Tampilkan log koreksi jika ada
                                 if correction_logs:
@@ -1091,7 +1101,7 @@ if uploaded_files:
             
             # Info hasil scan terakhir
             if st.session_state.scan_timestamp:
-                st.info(f"📅 Scan terakhir: {st.session_state.scan_timestamp.strftime('%H:%M:%S')}")
+                st.info(f"📅 Scan terakhir: {st.session_state.scan_timestamp.strftime('%H:%M:%S')} WIB")
     
     else:
         # BATCH MODE - Multiple files
