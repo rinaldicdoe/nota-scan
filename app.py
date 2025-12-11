@@ -922,7 +922,7 @@ with st.sidebar:
     
     model_choice = st.selectbox(
         "Model OCR",
-        options=["GPT-4o (Recommended)", "GPT-4o-mini (Hemat Biaya)"],
+        options=["GPT-4o-mini (Hemat Biaya)", "GPT-4o (Recommended)"],
         index=0,
         help="Pilih model AI untuk ekstraksi data"
     )
