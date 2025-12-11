@@ -1173,7 +1173,7 @@ if uploaded_files:
         
         # Widget Data Editor - Urutan kolom sesuai kebutuhan
         column_config = {
-            "tanggal": st.column_config.DateColumn("Tanggal", width="medium", format="YYYY-MM-DD"),
+            "tanggal": st.column_config.TextColumn("Tanggal", width="medium", help="Format: YYYY-MM-DD atau DD/MM/YYYY"),
             "nama_toko": st.column_config.TextColumn("Nama Toko", width="medium", required=True),
             "nomor_rekening": st.column_config.TextColumn("Nomor Rekening", width="medium"),
             "nama_bank": st.column_config.TextColumn("Nama Bank", width="small"),
