@@ -927,37 +927,13 @@ with st.sidebar:
         help="Pilih model AI untuk ekstraksi data"
     )
     
-    # Info model
+    # Info model - hanya biaya
     if "GPT-4o" in model_choice and "mini" not in model_choice:
-        st.success("✅ **GPT-4o**: Akurasi tinggi (95%+), cocok untuk tulisan tangan")
         st.caption("💰 Biaya: ~$0.01-0.02 per nota")
         selected_model = "gpt-4o"
     else:
-        st.info("💰 **GPT-4o-mini**: Hemat biaya, cocok untuk nota printed")
-        st.caption("⚠️ Akurasi tulisan tangan: 75-85%")
+        st.caption("� Biaya: ~$0.001-0.002 per nota")
         selected_model = "gpt-4o-mini"
-    
-    st.markdown("---")
-    st.markdown("### 📝 Cara Pakai")
-    st.markdown("""
-    <div style='background: rgba(255,255,255,0.15); padding: 1rem; border-radius: 8px; margin-bottom: 1rem;'>
-        <p style='color: white; margin: 0.3rem 0; font-size: 0.9rem;'>1. Upload foto nota</p>
-        <p style='color: white; margin: 0.3rem 0; font-size: 0.9rem;'>2. Klik Scan</p>
-        <p style='color: white; margin: 0.3rem 0; font-size: 0.9rem;'>3. Review hasil</p>
-        <p style='color: white; margin: 0.3rem 0; font-size: 0.9rem;'>4. Simpan ke Sheet</p>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    st.markdown("### 📸 Tips Foto Terbaik")
-    st.markdown("""
-    <div style='background: rgba(255,255,255,0.15); padding: 1rem; border-radius: 8px; margin-bottom: 1rem;'>
-        <p style='color: white; margin: 0.3rem 0; font-size: 0.85rem;'>✓ Pencahayaan terang & merata</p>
-        <p style='color: white; margin: 0.3rem 0; font-size: 0.85rem;'>✓ Foto dari atas (tegak lurus)</p>
-        <p style='color: white; margin: 0.3rem 0; font-size: 0.85rem;'>✓ Fokus jelas, tidak blur</p>
-        <p style='color: white; margin: 0.3rem 0; font-size: 0.85rem;'>✓ Seluruh nota terlihat</p>
-        <p style='color: white; margin: 0.3rem 0; font-size: 0.85rem;'>✗ Hindari bayangan & pantulan</p>
-    </div>
-    """, unsafe_allow_html=True)
     
     # Status
     st.markdown("---")
