@@ -556,9 +556,26 @@ def prepare_dataframe_with_confidence(items, metadata=None):
         
         # Tambahkan indicator ke field yang perlu
         nama_display = item.get('nama_barang', '')
-        indicator = get_indicator(nama_conf)
-        if indicator:
-            nama_display = f"{indicator} {nama_display}"
+        nama_indicator = get_indicator(nama_conf)
+        
+        # Jika ada field numeric dengan confidence rendah, tambahkan indicator di nama juga
+        # Karena NumberColumn tidak bisa menampilkan emoji
+        indicators_to_add = []
+        if nama_indicator:
+            indicators_to_add.append(nama_indicator)
+        
+        # Cek field numeric lainnya
+        if qty_conf < 80 and qty_conf not in [nama_conf]:
+            indicators_to_add.append(get_indicator(qty_conf))
+        if harga_conf < 80 and harga_conf not in [nama_conf, qty_conf]:
+            indicators_to_add.append(get_indicator(harga_conf))
+        if total_conf < 80 and total_conf not in [nama_conf, qty_conf, harga_conf]:
+            indicators_to_add.append(get_indicator(total_conf))
+        
+        # Gabungkan semua indicator (unique)
+        unique_indicators = list(dict.fromkeys(indicators_to_add))  # Remove duplicates
+        if unique_indicators:
+            nama_display = f"{' '.join(unique_indicators)} {nama_display}"
         
         unit_display = item.get('unit', 'pcs')
         unit_indicator = get_indicator(unit_conf)
