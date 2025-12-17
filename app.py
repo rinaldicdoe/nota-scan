@@ -592,7 +592,7 @@ def prepare_dataframe_with_confidence(items, metadata=None):
         # Jenis Pembayaran, Kategori Transaksi, Quantity, Unit, Nama Barang, 
         # Harga Satuan, Harga Total
         row = {
-            'tanggal': metadata.get('tanggal'),
+            'tanggal': None,  # Biarkan kosong sesuai permintaan user
             'nama_toko': metadata.get('nama_toko', 'Unknown'),
             'nomor_rekening': metadata.get('nomor_rekening'),
             'nama_bank': metadata.get('nama_bank'),
@@ -1298,7 +1298,46 @@ if uploaded_files:
             edited_df['total_harga'] = (edited_df['qty'] * edited_df['harga_satuan']).astype(int)
             st.info("💡 Total harga otomatis dihitung ulang: Qty × Harga Satuan")
         
+        # Tombol Copy Data
+        st.markdown("---")
+        col_copy1, col_copy2 = st.columns([3, 1])
+        with col_copy1:
+            st.write("**Copy data preview untuk dibagikan**")
+            st.caption("Salin data dalam format tabel yang mudah dibaca")
+        with col_copy2:
+            if st.button("📋 Copy Data", use_container_width=True):
+                # Format data sebagai teks yang mudah dibaca
+                copy_text = "=== HASIL SCAN NOTA ===\n\n"
+                
+                # Header
+                headers = list(edited_df.columns)
+                copy_text += " | ".join(headers) + "\n"
+                copy_text += "-" * (len(" | ".join(headers))) + "\n"
+                
+                # Data rows
+                for idx, row in edited_df.iterrows():
+                    row_text = " | ".join([str(val) if pd.notna(val) else "" for val in row])
+                    copy_text += row_text + "\n"
+                
+                # Summary
+                copy_text += "\n=== RINGKASAN ===\n"
+                copy_text += f"Total Items: {len(edited_df)}\n"
+                if 'qty' in edited_df.columns:
+                    copy_text += f"Total Quantity: {int(edited_df['qty'].sum())}\n"
+                if 'total_harga' in edited_df.columns:
+                    copy_text += f"Grand Total: Rp {edited_df['total_harga'].sum():,.0f}\n"
+                
+                # Tampilkan dalam text area yang bisa di-copy
+                st.text_area(
+                    "Data Preview (Ctrl+A untuk select all, Ctrl+C untuk copy):",
+                    copy_text,
+                    height=300,
+                    key="copy_preview"
+                )
+                st.success("✅ Data siap untuk di-copy! Gunakan Ctrl+A lalu Ctrl+C")
+        
         # Summary
+        st.markdown("---")
         col_sum1, col_sum2, col_sum3 = st.columns(3)
         with col_sum1:
             st.metric("Total Items", len(edited_df))
