@@ -1305,7 +1305,7 @@ if uploaded_files:
             st.write("**Copy data preview untuk dibagikan**")
             st.caption("Salin data dalam format tabel yang mudah dibaca")
         with col_copy2:
-            if st.button("📋 Copy Data", use_container_width=True):
+            if st.button("Copy Data", use_container_width=True):
                 # Format data sebagai teks yang mudah dibaca
                 copy_text = "=== HASIL SCAN NOTA ===\n\n"
                 
